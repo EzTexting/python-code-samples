@@ -1,4 +1,4 @@
-from EzTextingBase import EzTextingBase, Contact, Group, EzTextingError
+from EzTextingBase import EzTextingBase, Contact, Group, Folder, IncomingMessage, EzTextingError
 import xml.etree.ElementTree as ET
 
 class EzTextingXML(EzTextingBase):
@@ -9,8 +9,8 @@ class EzTextingXML(EzTextingBase):
         params['format'] = 'xml'
         return EzTextingBase._get(self,url, **params)
 
-    def _post(self,url, **params):
-        return EzTextingBase._post(self,url + (url.find('?')==-1 and '?' or '&') + 'format=xml', **params)
+    def _update_post_url(self, url):
+        return url + (url.find('?')==-1 and '?' or '&') + 'format=xml'
 
     def _parse_contacts_result(self, content):
         doc = ET.XML(content)
@@ -39,6 +39,36 @@ class EzTextingXML(EzTextingBase):
 
     def _build_group(self, entry):
         return Group(entry.findtext('Name'), entry.findtext('Note'), entry.findtext('ContactCount'), entry.findtext('ID'))
+
+    def _parse_folder_result(self, content):
+        doc = ET.XML(content)
+        entry = doc.find('Entry')
+        return self._build_folder(entry)
+
+    def _parse_folders_result(self, content):
+        doc = ET.XML(content)
+        res = []
+        for entry in doc.findall('Entries/Entry'):
+             res.append( self._build_folder(entry) )
+        return res
+
+    def _build_folder(self, entry):
+        return Folder(entry.findtext('Name'), entry.findtext('ID'))
+
+    def _parse_message_result(self, content):
+        doc = ET.XML(content)
+        entry = doc.find('Entry')
+        return self._build_message(entry)
+
+    def _parse_messages_result(self, content):
+        doc = ET.XML(content)
+        res = []
+        for entry in doc.findall('Entries/Entry'):
+             res.append( self._build_message(entry) )
+        return res
+
+    def _build_message(self, entry):
+        return IncomingMessage(entry.findtext('PhoneNumber'), entry.findtext('Subject'), entry.findtext('Message'), entry.findtext('New'), entry.findtext('FolderID'), entry.findtext('ContactID'), entry.findtext('ReceivedOn'), entry.findtext('ID'))
 
 
     def _parse_errors(self, errcode, content):

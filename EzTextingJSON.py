@@ -1,5 +1,9 @@
-from EzTextingBase import EzTextingBase, Contact, Group, EzTextingError
-import simplejson as json
+from EzTextingBase import EzTextingBase, Contact, Group, Folder, IncomingMessage, EzTextingError
+
+try:
+    import simplejson as json
+except ImportError:
+    import json
 
 class EzTextingJSON(EzTextingBase):
     def __init__(self, base_url, login, password):
@@ -9,8 +13,8 @@ class EzTextingJSON(EzTextingBase):
         params['format'] = 'json'
         return EzTextingBase._get(self,url, **params)
 
-    def _post(self,url, **params):
-        return EzTextingBase._post(self,url + (url.find('?')==-1 and '?' or '&') + 'format=json', **params)
+    def _update_post_url(self, url):
+        return url + (url.find('?')==-1 and '?' or '&') + 'format=json'
 
     def _parse_contacts_result(self, content):
         pyobj = json.loads(content)
@@ -39,6 +43,37 @@ class EzTextingJSON(EzTextingBase):
 
     def _build_group(self, entry):
         return Group(str(entry['Name']), str(entry['Note']), entry['ContactCount'], str(entry['ID']))
+
+
+    def _parse_folder_result(self, content):
+        pyobj = json.loads(content)
+        entry = pyobj['Response']['Entry']
+        return self._build_folder(entry)
+
+    def _parse_folders_result(self, content):
+        pyobj = json.loads(content)
+        res = []
+        for entry in pyobj['Response']['Entries']:
+             res.append( self._build_folder(entry) )
+        return res
+
+    def _build_folder(self, entry):
+        return Folder(str(entry.get('Name', None)), str(entry.get('ID', None)))
+
+    def _parse_message_result(self, content):
+        pyobj = json.loads(content)
+        entry = pyobj['Response']['Entry']
+        return self._build_message(entry)
+
+    def _parse_messages_result(self, content):
+        pyobj = json.loads(content)
+        res = []
+        for entry in pyobj['Response']['Entries']:
+             res.append( self._build_message(entry) )
+        return res
+
+    def _build_message(self, entry):
+        return IncomingMessage(str(entry['PhoneNumber']), str(entry['Subject']), str(entry['Message']), str(entry['New']), str(entry['FolderID']), str(entry['ContactID']), str(entry['ReceivedOn']), str(entry['ID']))
 
 
     def _parse_errors(self, errcode, content):

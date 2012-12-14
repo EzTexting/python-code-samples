@@ -6,25 +6,10 @@ class EzTextingBase:
         self.login = login
         self.password = password
 
-    def _get(self,url, **params):
+    def _prepare_params(self, **params):
         #remove empty params
         keys = params.keys()
-        for k in keys: 
-            if params[k] is None: del params[k]
-        params['User'] = self.login
-        params['Password'] = self.password
-        #print params
-        str_params = urllib.urlencode(params)
-        try:
-            resp = urllib2.urlopen(self.base_url+ url + '?' + str_params)
-            return resp.read()
-        except urllib2.HTTPError, error:
-            raise self._parse_errors(error.code, error.read())
-
-    def _post(self,url, **params):
-        #remove empty params
-        keys = params.keys()
-        for k in keys: 
+        for k in keys:
             if params[k] is None: del params[k]
             elif getattr(params[k], '__iter__', False):
                 for i, item in enumerate(params[k]):
@@ -32,10 +17,28 @@ class EzTextingBase:
                 del params[k]
         params['User'] = self.login
         params['Password'] = self.password
-        #print params
-        str_params = urllib.urlencode(params)
+        return urllib.urlencode(params)
+
+    def _get(self,url, **params):
+        str_params = self._prepare_params(**params)
         try:
-            resp = urllib2.urlopen(self.base_url+ url, str_params)
+            resp = urllib2.urlopen(self.base_url+ url + '?' + str_params)
+            return resp.read()
+        except urllib2.HTTPError, error:
+            raise self._parse_errors(error.code, error.read())
+
+    def _update_post_url(self, url):
+        """ to be redefined in subclasses
+        """
+        return url
+
+    def _post(self,url, params=None, **kwargs):
+        if params is None:
+            params = self._prepare_params(**kwargs)
+
+        url = self._update_post_url(url)
+        try:
+            resp = urllib2.urlopen(self.base_url+ url, params)
             return resp.read()
         except urllib2.HTTPError, error:
             if error.code == 201: #actually, this is success
@@ -97,7 +100,7 @@ class EzTextingBase:
         res = self._post("/contacts/"+contact.id, PhoneNumber=contact.phone_number, FirstName=contact.first_name, LastName=contact.last_name, Email=contact.email, Groups=contact.groups, Note=contact.note)
         return self._parse_contact_result(res)
 
-    def get_all_groups(self, query=None, source=None, optout=None, group=None, sortBy=None, sortDir=None, itemsPerPage=None, page=None):
+    def get_all_groups(self, sortBy=None, sortDir=None, itemsPerPage=None, page=None):
         """Get a list of groups stored in your Ez Texting account.
 
         Sorting
@@ -140,6 +143,80 @@ class EzTextingBase:
         """
         res = self._post("/groups/"+group.id, Name=group.name, Note=group.note)
         return self._parse_group_result(res)
+
+    def get_all_folders(self):
+        """Get all Folders in your Ez Texting Inbox.
+
+        result - list of folder objects
+        """
+        res = self._get("/messages-folders")
+        return self._parse_folders_result(res)
+
+    def get_folder_by_id(self, id):
+        """Get a single folder in your Ez Texting Inbox.
+        """
+        res = self._get("/messages-folders/"+id)
+        return self._parse_folder_result(res)
+
+    def delete_folder(self, id):
+        """Delete a Folder in your Ez Texting Inbox.
+        """
+        self._delete("/messages-folders/"+id)
+
+    def create_folder(self, folder):
+        """Create a Folder in your Ez Texting Inbox.
+
+           folder - folder object. name is required.
+           returns folder object
+        """
+        res = self._post("/messages-folders", Name=folder.name)
+        return self._parse_folder_result(res)
+
+    def update_folder(self, folder):
+        """Update the name of a Folder in your Ez Texting Inbox.
+
+           folder - folder object. id and name are required.
+        """
+        res = self._post("/messages-folders/"+folder.id, Name=folder.name)
+
+    def get_all_messages(self, folder_id=None, search=None, sortBy=None, sortDir=None, itemsPerPage=None, page=None):
+        """Get all incoming text messages in your Ez Texting Inbox.
+        folder_id (Optional) Get messages from the selected folder. If FolderID is not given then request will return messages in your Inbox and all folders.
+        search (Optional) Get messages which contain selected text or which are sent from selected phone number.
+        Sorting
+        sortBy (Optional) Property to sort by. Available values: ReceivedOn, PhoneNumber, Message
+        sortDir (Optional) Direction of sorting. Available values: asc, desc
+        Pagination
+        itemsPerPage (Optional) Number of results to retrieve. By default, first 10 groups sorted in alphabetical order are retrieved.
+        page (Optional) Page of results to retrieve
+
+        result - list of message objects
+        """
+        res = self._get("/incoming-messages",  FolderID=folder_id, Search=search, sortBy=sortBy, sortDir=sortDir, itemsPerPage=itemsPerPage, page=page)
+        return self._parse_messages_result(res)
+
+    def get_message_by_id(self, id):
+        """Get a single incoming text messages in your Ez Texting Inbox.
+        """
+        res = self._get("/incoming-messages/"+id)
+        return self._parse_message_result(res)
+
+    def delete_message(self, id):
+        """Delete an incoming text message in your Ez Texting Inbox.
+        """
+        self._delete("/incoming-messages/"+id)
+
+    def move_message_to_folder(self, ids, folder_id):
+        """Moves an incoming text message in your Ez Texting Inbox to a specified folder.
+           Note: You may include multiple Message IDs to move multiple messages to same folder in a single API call.
+        """
+        str_params = self._prepare_params(FolderID=folder_id)
+        if getattr(ids, '__iter__', False):
+            for i, item in enumerate(ids):
+                str_params = str_params + '&ID[]='+item
+        else:
+            str_params = str_params + '&ID='+ids
+        self._post("/incoming-messages/?_method=move-to-folder", None, str_params)
 
 
 
@@ -190,5 +267,39 @@ class Group:
               ', Name: ' + self.name + \
               ', Note: ' + self.note + \
               ', Number of Contacts: ' + str(self.contacts_number)
+    def __repr__(self):
+        return self.__str__()
+
+class Folder:
+    def __init__(self, name, id=None):
+        self.id = id
+        self.name = name
+
+    def __str__(self):
+       return 'Folder ID: ' + str(self.id) + \
+              ', Name: ' + str(self.name)
+    def __repr__(self):
+        return self.__str__()
+
+class IncomingMessage:
+    def __init__(self, phone_number, subject, message, new, folder_id, contact_id, received_on=None, id=None):
+        self.id = id
+        self.phone_number = phone_number
+        self.subject = subject
+        self.message = message
+        self.new = new
+        self.folder_id = folder_id
+        self.contact_id = contact_id
+        self.received_on = received_on
+
+    def __str__(self):
+       return 'Message ID: ' + self.id + \
+              ', Phone Number: ' + self.phone_number + \
+              ', Subject: ' + self.subject + \
+              ', Message: ' + self.message + \
+              ', New: ' + self.new + \
+              ', Folder ID: ' + self.folder_id + \
+              ', Contact ID: ' + self.contact_id + \
+              ', Received On: ' + self.received_on + '\n'
     def __repr__(self):
         return self.__str__()
