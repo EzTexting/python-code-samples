@@ -216,7 +216,7 @@ class EzTextingBase:
                 str_params = str_params + '&ID[]='+item
         else:
             str_params = str_params + '&ID='+ids
-        self._post("/incoming-messages/?_method=move-to-folder", None, str_params)
+        self._post("/incoming-messages/?_method=move-to-folder", str_params)
 
 
 
